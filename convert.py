@@ -123,6 +123,13 @@ def convert(mp4_path: Path, calib_path: Path, output_path: Path, use_mag: bool =
         with open(output_path, "wb") as f_mcap:
             writer = Writer(f_mcap)
             
+            # Store raw calibration as MCAP Metadata for archival/provenance
+            logger.info("Writing raw calibration to MCAP metadata...")
+            writer._writer.add_metadata(
+                name="calibration_json",
+                data={"content": json.dumps(calib, indent=2)}
+            )
+            
             # Static TF: head -> imu -> cam0
             # head is at origin for now (identity)
             # imu relative to head (identity for this egocentric model)

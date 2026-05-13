@@ -51,3 +51,8 @@ The converter builds a hierarchical coordinate system (TF Tree) to represent the
 2. **`imu` -> `cam0`**: A **static transform using your extrinsics**. The values `R_cam_imu` (Rotation) and `t_cam_imu_m` (Translation) from `calibration.json` are embedded here to define the exact physical offset between the IMU and the camera lens.
 
 In **Foxglove Studio**, you can visualize this by setting the "Global frame" to `world` in a 3D panel and enabling the "Transforms" layer.
+
+## Archival and Metadata
+To ensure data reproducibility and provenance, the entire content of the input `calibration.json` is stored as **global MCAP metadata** within the file.
+- **Metadata Name**: `calibration_json`
+- **Description**: Contains the raw JSON string with original extrinsics (`R_cam_imu`, `t_cam_imu_m`) and intrinsics before any processing.

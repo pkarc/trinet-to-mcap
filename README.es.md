@@ -51,3 +51,8 @@ El convertidor construye un sistema de coordenadas jerárquico (Árbol TF) para 
 2. **`imu` -> `cam0`**: Una **transformación estática que usa tus extrínsecos**. Los valores `R_cam_imu` (Rotación) y `t_cam_imu_m` (Traslación) de `calibration.json` se incrustan aquí para definir el desplazamiento físico exacto entre el IMU y el lente de la cámara.
 
 En **Foxglove Studio**, puedes visualizar esto configurando el "Global frame" como `world` en un panel 3D y habilitando la capa de "Transforms".
+
+## Archivado y Metadatos
+Para garantizar la reproducibilidad y procedencia de los datos, el contenido íntegro del archivo `calibration.json` de entrada se guarda como **metadatos globales de MCAP** dentro del archivo.
+- **Nombre de Metadatos**: `calibration_json`
+- **Descripción**: Contiene la cadena JSON original con los extrínsecos (`R_cam_imu`, `t_cam_imu_m`) e intrínsecos sin procesar antes de cualquier transformación.
