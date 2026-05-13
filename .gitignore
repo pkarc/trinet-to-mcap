@@ -1,0 +1,7 @@
+GEMINI.md
+__pycache__/
+*.imu
+*.vts
+video.mp4
+sample_data/
+sample_output/

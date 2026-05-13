@@ -1,0 +1,6 @@
+numpy
+opencv-python
+av
+mcap
+mcap-protobuf-support
+foxglove-schemas-protobuf
