@@ -44,3 +44,10 @@ python convert.py --input sample_data/clothes.mp4 --calibration sample_data/cali
 | `/imu/linear_acceleration` | `foxglove.Vector3` | Corrected accelerometer data. |
 | `/imu/magnetic_field` | `foxglove.Vector3` | Raw magnetometer data. |
 | `/tf` | `foxglove.FrameTransform` | Dynamic (`world->imu`) and Static (`imu->cam0`) transforms. |
+
+## Extrinsics and TF Tree
+The converter builds a hierarchical coordinate system (TF Tree) to represent the camera's movement in 3D space:
+1. **`world` -> `imu`**: A dynamic transform representing the head pose, calculated using the Madgwick sensor fusion filter.
+2. **`imu` -> `cam0`**: A **static transform using your extrinsics**. The values `R_cam_imu` (Rotation) and `t_cam_imu_m` (Translation) from `calibration.json` are embedded here to define the exact physical offset between the IMU and the camera lens.
+
+In **Foxglove Studio**, you can visualize this by setting the "Global frame" to `world` in a 3D panel and enabling the "Transforms" layer.
