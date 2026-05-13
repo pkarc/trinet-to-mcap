@@ -224,6 +224,17 @@ def convert(mp4_path: Path, calib_path: Path, output_path: Path, use_mag: bool =
                 # Position is unknown (set to zero for egocentric rotation-only)
                 writer.write_message("tf", head_tf, log_time=t_aligned, publish_time=t_aligned)
 
+            # Transcode video to remove B-frames (Foxglove compatibility requirement)
+            logger.info("Transcoding video to remove B-frames (Foxglove compatibility)...")
+            import subprocess
+            nobf_video = Path(tmp_dir) / "video_nobf.mp4"
+            subprocess.run([
+                "ffmpeg", "-y", "-i", str(clean_video),
+                "-c:v", "libx264", "-preset", "ultrafast", "-bf", "0",
+                "-crf", "23", str(nobf_video)
+            ], check=True, capture_output=True)
+            clean_video = nobf_video
+
             # Write Video Frames
             logger.info("Extracting H.264 packets from video and converting to Annex B...")
             container = av.open(str(clean_video))
