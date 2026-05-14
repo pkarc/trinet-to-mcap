@@ -46,13 +46,14 @@ python convert.py --input sample_data/clothes.mp4 --calibration sample_data/cali
 | `/tf` | `foxglove.FrameTransform` | Transformaciones Dinámicas (`world->imu`) y Estáticas (`imu->cam0`). |
 
 ## Extrínsecos y Árbol TF
-El convertidor construye un sistema de coordenadas jerárquico (Árbol TF) para representar el movimiento de la cámara en el espacio 3D:
-1. **`world` -> `imu`**: Una transformación dinámica que representa la pose de la cabeza, calculada mediante el filtro de fusión Madgwick.
-2. **`imu` -> `cam0`**: Una **transformación estática que usa tus extrínsecos**. Los valores `R_cam_imu` (Rotación) y `t_cam_imu_m` (Traslación) de `calibration.json` se incrustan aquí para definir el desplazamiento físico exacto entre el IMU y el lente de la cámara.
-
-En **Foxglove Studio**, puedes visualizar esto configurando el "Global frame" como `world` en un panel 3D y habilitando la capa de "Transforms".
+El convertidor construye un sistema de coordenadas jerárquico (Árbol TF) para representar el movimiento de la cámara en el espacio 3D. Mientras que el tópico `/camera/calibration` proporciona matrices de proyección estándar para visualización, los extrínsecos físicos se manejan de la siguiente manera:
+1. **`world` -> `imu`**: Una transformación dinámica que representa la pose de la cabeza, calculada mediante el filtro de fusión Madgwick de 9 ejes.
+2. **`imu` -> `cam0`**: Una **transformación estática que contiene los extrínsecos crudos**.
+    - La submatriz de rotación `R_cam_imu` se convierte en un cuaternión unitario ($x, y, z, w$).
+    - El vector de traslación `t_cam_imu_m` se mapea directamente como un vector 3D.
+    - Esto sigue el protocolo estándar requerido, permitiendo que cualquier pipeline posterior consulte la posición exacta de la cámara respecto al IMU a través del tópico **`/tf`**.
 
 ## Archivado y Metadatos
-Para garantizar la reproducibilidad y procedencia de los datos, el contenido íntegro del archivo `calibration.json` de entrada se guarda como **metadatos globales de MCAP** dentro del archivo.
-- **Nombre de Metadatos**: `calibration_json`
-- **Descripción**: Contiene la cadena JSON original con los extrínsecos (`R_cam_imu`, `t_cam_imu_m`) e intrínsecos sin procesar antes de cualquier transformación.
+Para garantizar la procedencia total de los datos y el acceso a los valores numéricos originales:
+- El contenido íntegro del archivo `calibration.json` de entrada se guarda como **metadatos globales de MCAP** bajo el nombre `calibration_json`.
+- Esto archiva todas las matrices y parámetros originales antes de cualquier conversión o formateo.

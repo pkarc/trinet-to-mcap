@@ -171,15 +171,18 @@ def convert(mp4_path: Path, calib_path: Path, output_path: Path, use_mag: bool =
                 0, 0, 1
             ])
             
-            # Map raw extrinsics directly to R and P as requested by some client pipelines
-            # R is the 3x3 rotation matrix
-            calib_msg.R.extend(R_cam_imu.flatten().tolist())
+            # Standard functional matrices for Foxglove/ROS visualization
+            # R (Rectification) should be Identity for a single camera
+            calib_msg.R.extend([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0])
             
-            # P is the 3x4 projection matrix [R | t]
-            P_raw = np.zeros((3, 4))
-            P_raw[0:3, 0:3] = R_cam_imu
-            P_raw[0:3, 3] = t_cam_imu
-            calib_msg.P.extend(P_raw.flatten().tolist())
+            # P (Projection) should be [K | 0] for standard projection pipelines
+            P_func = np.zeros((3, 4))
+            P_func[0:3, 0:3] = np.array([
+                [intr["fx"], 0, intr["cx"]],
+                [0, intr["fy"], intr["cy"]],
+                [0, 0, 1]
+            ])
+            calib_msg.P.extend(P_func.flatten().tolist())
             
             writer.write_message("/camera/calibration", calib_msg, log_time=vts_data.sof_timestamps_ns[0], publish_time=vts_data.sof_timestamps_ns[0])
 

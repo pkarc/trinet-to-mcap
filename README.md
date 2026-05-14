@@ -46,13 +46,14 @@ python convert.py --input sample_data/clothes.mp4 --calibration sample_data/cali
 | `/tf` | `foxglove.FrameTransform` | Dynamic (`world->imu`) and Static (`imu->cam0`) transforms. |
 
 ## Extrinsics and TF Tree
-The converter builds a hierarchical coordinate system (TF Tree) to represent the camera's movement in 3D space:
-1. **`world` -> `imu`**: A dynamic transform representing the head pose, calculated using the Madgwick sensor fusion filter.
-2. **`imu` -> `cam0`**: A **static transform using your extrinsics**. The values `R_cam_imu` (Rotation) and `t_cam_imu_m` (Translation) from `calibration.json` are embedded here to define the exact physical offset between the IMU and the camera lens.
-
-In **Foxglove Studio**, you can visualize this by setting the "Global frame" to `world` in a 3D panel and enabling the "Transforms" layer.
+The converter builds a hierarchical coordinate system (TF Tree) to represent the camera's movement in 3D space. While the `/camera/calibration` topic provides standard projection matrices for visualization, the physical extrinsics are handled as follows:
+1. **`world` -> `imu`**: A dynamic transform representing the head pose, calculated using the 9-DOF Madgwick sensor fusion filter.
+2. **`imu` -> `cam0`**: A **static transform containing the raw extrinsics**. 
+    - The rotation submatrix `R_cam_imu` is converted into a unit quaternion ($x, y, z, w$).
+    - The translation vector `t_cam_imu_m` is mapped directly as a 3D vector.
+    - This follows the standard protocol described in your requirements, ensuring that downstream pipelines can query the exact camera position relative to the IMU via the **`/tf`** topic.
 
 ## Archival and Metadata
-To ensure data reproducibility and provenance, the entire content of the input `calibration.json` is stored as **global MCAP metadata** within the file.
-- **Metadata Name**: `calibration_json`
-- **Description**: Contains the raw JSON string with original extrinsics (`R_cam_imu`, `t_cam_imu_m`) and intrinsics before any processing.
+To ensure full data provenance and access to the unprocessed numerical values:
+- The entire content of the input `calibration.json` is stored as **global MCAP metadata** named `calibration_json`.
+- This archives all original matrices and parameters before any conversion or reformatting takes place.
