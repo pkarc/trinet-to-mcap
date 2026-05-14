@@ -154,7 +154,7 @@ def convert(mp4_path: Path, calib_path: Path, output_path: Path, use_mag: bool =
             tf_msg.rotation.y = qy
             tf_msg.rotation.z = qz
             
-            writer.write_message("tf", tf_msg, log_time=vts_data.sof_timestamps_ns[0], publish_time=vts_data.sof_timestamps_ns[0])
+            writer.write_message("/tf", tf_msg, log_time=vts_data.sof_timestamps_ns[0], publish_time=vts_data.sof_timestamps_ns[0])
 
             # Camera Calibration
             intr = calib["intrinsics"]
@@ -170,12 +170,18 @@ def convert(mp4_path: Path, calib_path: Path, output_path: Path, use_mag: bool =
                 0, intr["fy"], intr["cy"],
                 0, 0, 1
             ])
-            calib_msg.P.extend([
-                intr["fx"], 0, intr["cx"], 0,
-                0, intr["fy"], intr["cy"], 0,
-                0, 0, 1, 0
-            ])
-            writer.write_message("camera/calibration", calib_msg, log_time=vts_data.sof_timestamps_ns[0], publish_time=vts_data.sof_timestamps_ns[0])
+            
+            # Map raw extrinsics directly to R and P as requested by some client pipelines
+            # R is the 3x3 rotation matrix
+            calib_msg.R.extend(R_cam_imu.flatten().tolist())
+            
+            # P is the 3x4 projection matrix [R | t]
+            P_raw = np.zeros((3, 4))
+            P_raw[0:3, 0:3] = R_cam_imu
+            P_raw[0:3, 3] = t_cam_imu
+            calib_msg.P.extend(P_raw.flatten().tolist())
+            
+            writer.write_message("/camera/calibration", calib_msg, log_time=vts_data.sof_timestamps_ns[0], publish_time=vts_data.sof_timestamps_ns[0])
 
             # Write IMU data
             gyro_bias = np.array([0.0, 0.0, 0.0])
@@ -194,14 +200,14 @@ def convert(mp4_path: Path, calib_path: Path, output_path: Path, use_mag: bool =
                 gyro_msg.x = imu_data.gyro[i, 0] - gyro_bias[0]
                 gyro_msg.y = imu_data.gyro[i, 1] - gyro_bias[1]
                 gyro_msg.z = imu_data.gyro[i, 2] - gyro_bias[2]
-                writer.write_message("imu/angular_velocity", gyro_msg, log_time=t_aligned, publish_time=t_aligned)
+                writer.write_message("/imu/angular_velocity", gyro_msg, log_time=t_aligned, publish_time=t_aligned)
                 
                 # Publish linear acceleration
                 accel_msg = Vector3()
                 accel_msg.x = imu_data.accel[i, 0] - accel_bias[0]
                 accel_msg.y = imu_data.accel[i, 1] - accel_bias[1]
                 accel_msg.z = imu_data.accel[i, 2] - accel_bias[2]
-                writer.write_message("imu/linear_acceleration", accel_msg, log_time=t_aligned, publish_time=t_aligned)
+                writer.write_message("/imu/linear_acceleration", accel_msg, log_time=t_aligned, publish_time=t_aligned)
 
                 # Publish raw magnetic field
                 if imu_data.mag is not None:
@@ -209,7 +215,7 @@ def convert(mp4_path: Path, calib_path: Path, output_path: Path, use_mag: bool =
                     mag_msg.x = imu_data.mag[i, 0]
                     mag_msg.y = imu_data.mag[i, 1]
                     mag_msg.z = imu_data.mag[i, 2]
-                    writer.write_message("imu/magnetic_field", mag_msg, log_time=t_aligned, publish_time=t_aligned)
+                    writer.write_message("/imu/magnetic_field", mag_msg, log_time=t_aligned, publish_time=t_aligned)
 
                 # Publish dynamic TF: world -> imu (Head Pose)
                 head_tf = FrameTransform()
@@ -222,7 +228,7 @@ def convert(mp4_path: Path, calib_path: Path, output_path: Path, use_mag: bool =
                 head_tf.rotation.z = quat_xyzw[i, 2]
                 head_tf.rotation.w = quat_xyzw[i, 3]
                 # Position is unknown (set to zero for egocentric rotation-only)
-                writer.write_message("tf", head_tf, log_time=t_aligned, publish_time=t_aligned)
+                writer.write_message("/tf", head_tf, log_time=t_aligned, publish_time=t_aligned)
 
             # Transcode video to remove B-frames (Foxglove compatibility requirement)
             logger.info("Transcoding video to remove B-frames (Foxglove compatibility)...")
@@ -269,7 +275,7 @@ def convert(mp4_path: Path, calib_path: Path, output_path: Path, use_mag: bool =
                     vid_msg.data = bytes(p)
                     vid_msg.format = "h264"
                     
-                    writer.write_message("camera/image/compressed", vid_msg, log_time=t_frame, publish_time=t_frame)
+                    writer.write_message("/camera/image/compressed", vid_msg, log_time=t_frame, publish_time=t_frame)
                     frame_idx += 1
             
             # Flush the filter if needed
@@ -282,7 +288,7 @@ def convert(mp4_path: Path, calib_path: Path, output_path: Path, use_mag: bool =
                         vid_msg.frame_id = "cam0"
                         vid_msg.data = bytes(p)
                         vid_msg.format = "h264"
-                        writer.write_message("camera/image/compressed", vid_msg, log_time=t_frame, publish_time=t_frame)
+                        writer.write_message("/camera/image/compressed", vid_msg, log_time=t_frame, publish_time=t_frame)
                         frame_idx += 1
             
             writer.finish()
