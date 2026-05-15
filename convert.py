@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Tuple
 import av
 import av.bitstream
 import numpy as np
+from scipy.spatial.transform import Rotation
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("trinet_to_mcap")
 
@@ -37,33 +38,10 @@ def to_google_timestamp(nanos: int) -> Timestamp:
     return ts
 
 def matrix_to_quaternion(R: np.ndarray) -> Tuple[float, float, float, float]:
-    """Convert a 3x3 rotation matrix to a (w, x, y, z) quaternion."""
-    tr = np.trace(R)
-    if tr > 0:
-        S = np.sqrt(tr + 1.0) * 2
-        qw = 0.25 * S
-        qx = (R[2, 1] - R[1, 2]) / S
-        qy = (R[0, 2] - R[2, 0]) / S
-        qz = (R[1, 0] - R[0, 1]) / S
-    elif (R[0, 0] > R[1, 1]) and (R[0, 0] > R[2, 2]):
-        S = np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2]) * 2
-        qw = (R[2, 1] - R[1, 2]) / S
-        qx = 0.25 * S
-        qy = (R[0, 1] + R[1, 0]) / S
-        qz = (R[0, 2] + R[2, 0]) / S
-    elif R[1, 1] > R[2, 2]:
-        S = np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2]) * 2
-        qw = (R[0, 2] - R[2, 0]) / S
-        qx = (R[0, 1] + R[1, 0]) / S
-        qy = 0.25 * S
-        qz = (R[1, 2] + R[2, 1]) / S
-    else:
-        S = np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1]) * 2
-        qw = (R[1, 0] - R[0, 1]) / S
-        qx = (R[0, 2] + R[2, 0]) / S
-        qy = (R[1, 2] + R[2, 1]) / S
-        qz = 0.25 * S
-    return qw, qx, qy, qz
+    """Convert a 3x3 rotation matrix to a (x, y, z, w) quaternion using Scipy."""
+    r = Rotation.from_matrix(R)
+    # Scipy as_quat() returns [x, y, z, w]
+    return tuple(r.as_quat())
 
 def convert(mp4_path: Path, calib_path: Path, output_path: Path, use_mag: bool = True):
     with open(calib_path, 'r') as f:
@@ -130,31 +108,26 @@ def convert(mp4_path: Path, calib_path: Path, output_path: Path, use_mag: bool =
                 data={"content": json.dumps(calib, indent=2)}
             )
             
-            # Static TF: head -> imu -> cam0
-            # head is at origin for now (identity)
-            # imu relative to head (identity for this egocentric model)
-            # cam0 relative to imu
+            # Static TF: imu -> cam0 (Extrinsics)
             R_cam_imu = np.array(calib["extrinsics"]["R_cam_imu"])
             t_cam_imu = np.array(calib["extrinsics"]["t_cam_imu_m"])
             
-            # R_cam_imu is rotation from IMU to Cam? 
-            # Usually Kalibr gives T_cam_imu = [R_cam_imu | t_cam_imu] such that p_cam = R*p_imu + t.
-            # This means it's the transform from imu frame to camera frame.
-            qw, qx, qy, qz = matrix_to_quaternion(R_cam_imu)
+            qx, qy, qz, qw = matrix_to_quaternion(R_cam_imu)
 
-            tf_msg = FrameTransform()
-            tf_msg.timestamp.CopyFrom(to_google_timestamp(vts_data.sof_timestamps_ns[0]))
-            tf_msg.parent_frame_id = "imu"
-            tf_msg.child_frame_id = "cam0"
-            tf_msg.translation.x = t_cam_imu[0]
-            tf_msg.translation.y = t_cam_imu[1]
-            tf_msg.translation.z = t_cam_imu[2]
-            tf_msg.rotation.w = qw
-            tf_msg.rotation.x = qx
-            tf_msg.rotation.y = qy
-            tf_msg.rotation.z = qz
+            static_tf_msg = FrameTransform()
+            static_tf_msg.parent_frame_id = "imu"
+            static_tf_msg.child_frame_id = "cam0"
+            static_tf_msg.translation.x = t_cam_imu[0]
+            static_tf_msg.translation.y = t_cam_imu[1]
+            static_tf_msg.translation.z = t_cam_imu[2]
+            static_tf_msg.rotation.x = qx
+            static_tf_msg.rotation.y = qy
+            static_tf_msg.rotation.z = qz
+            static_tf_msg.rotation.w = qw
             
-            writer.write_message("/tf", tf_msg, log_time=vts_data.sof_timestamps_ns[0], publish_time=vts_data.sof_timestamps_ns[0])
+            # Initial broadcast
+            static_tf_msg.timestamp.CopyFrom(to_google_timestamp(vts_data.sof_timestamps_ns[0]))
+            writer.write_message("/tf", static_tf_msg, log_time=vts_data.sof_timestamps_ns[0], publish_time=vts_data.sof_timestamps_ns[0])
 
             # Camera Calibration
             intr = calib["intrinsics"]
@@ -272,6 +245,10 @@ def convert(mp4_path: Path, calib_path: Path, output_path: Path, use_mag: bool =
                     
                     t_frame = vts_data.sof_timestamps_ns[frame_idx]
                     
+                    # Continuous TF Broadcast: imu -> cam0 (ensure persistence in Foxglove)
+                    static_tf_msg.timestamp.CopyFrom(to_google_timestamp(t_frame))
+                    writer.write_message("/tf", static_tf_msg, log_time=t_frame, publish_time=t_frame)
+
                     vid_msg = CompressedVideo()
                     vid_msg.timestamp.CopyFrom(to_google_timestamp(t_frame))
                     vid_msg.frame_id = "cam0"
@@ -286,6 +263,11 @@ def convert(mp4_path: Path, calib_path: Path, output_path: Path, use_mag: bool =
                 for p in bsf.filter(None):
                     if frame_idx < len(vts_data.sof_timestamps_ns):
                         t_frame = vts_data.sof_timestamps_ns[frame_idx]
+                        
+                        # Continuous TF Broadcast for flushed frames
+                        static_tf_msg.timestamp.CopyFrom(to_google_timestamp(t_frame))
+                        writer.write_message("/tf", static_tf_msg, log_time=t_frame, publish_time=t_frame)
+
                         vid_msg = CompressedVideo()
                         vid_msg.timestamp.CopyFrom(to_google_timestamp(t_frame))
                         vid_msg.frame_id = "cam0"
