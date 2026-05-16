@@ -19,6 +19,7 @@ logger = logging.getLogger("trinet_to_mcap")
 from foxglove_schemas_protobuf.CameraCalibration_pb2 import CameraCalibration
 from foxglove_schemas_protobuf.CompressedVideo_pb2 import CompressedVideo
 from foxglove_schemas_protobuf.FrameTransform_pb2 import FrameTransform
+from foxglove_schemas_protobuf.Pose_pb2 import Pose
 from foxglove_schemas_protobuf.Quaternion_pb2 import Quaternion
 from foxglove_schemas_protobuf.Vector3_pb2 import Vector3
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -128,6 +129,18 @@ def convert(mp4_path: Path, calib_path: Path, output_path: Path, use_mag: bool =
             # Initial broadcast
             static_tf_msg.timestamp.CopyFrom(to_google_timestamp(vts_data.sof_timestamps_ns[0]))
             writer.write_message("/tf", static_tf_msg, log_time=vts_data.sof_timestamps_ns[0], publish_time=vts_data.sof_timestamps_ns[0])
+
+            # Dedicated Raw Extrinsics Topic (easy access for inspection)
+            # This follows the client requirement to provide quat and translation in a clear way.
+            raw_ext_msg = Pose()
+            raw_ext_msg.position.x = t_cam_imu[0]
+            raw_ext_msg.position.y = t_cam_imu[1]
+            raw_ext_msg.position.z = t_cam_imu[2]
+            raw_ext_msg.orientation.x = qx
+            raw_ext_msg.orientation.y = qy
+            raw_ext_msg.orientation.z = qz
+            raw_ext_msg.orientation.w = qw
+            writer.write_message("/camera/calibration/extrinsics", raw_ext_msg, log_time=vts_data.sof_timestamps_ns[0], publish_time=vts_data.sof_timestamps_ns[0])
 
             # Camera Calibration
             intr = calib["intrinsics"]
